@@ -5,6 +5,10 @@
 
 #include "pool.h"
 
+#ifndef NVALGRIND
+#include <valgrind/memcheck.h>
+#endif
+
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 
 #define _MASK(a) ((a) - 1)
@@ -58,6 +62,11 @@ pool_init(struct pool *p, size_t ecount, size_t esize, size_t align) {
 	}
 	e->next = NULL;
 
+#ifndef NVALGRIND
+	VALGRIND_CREATE_MEMPOOL(p, 0, 1);
+	VALGRIND_MAKE_MEM_NOACCESS(p->area, p->area_len);
+#endif
+
 	p->ecount = ecount;
 	p->esize = esize;
 
@@ -66,6 +75,9 @@ pool_init(struct pool *p, size_t ecount, size_t esize, size_t align) {
 
 void
 pool_clean(struct pool *p) {
+#ifndef NVALGRIND
+	VALGRIND_DESTROY_MEMPOOL(p);
+#endif
 	_pool_aligned_free(p->area);
 }
 
@@ -75,6 +87,10 @@ pool_alloc(struct pool *p) {
 
 	if (p->free == NULL)
 		return NULL;
+
+#ifndef NVALGRIND
+	VALGRIND_MEMPOOL_ALLOC(p, p->free, p->esize);
+#endif
 
 	e = p->free;
 	p->free = (p->free)->next;
@@ -92,4 +108,8 @@ pool_free(struct pool *p, void *e) {
 	free_e = (struct pool_free *)e;
 	free_e->next = p->free;
 	p->free = free_e;
+
+#ifndef NVALGRIND
+	VALGRIND_MEMPOOL_FREE(p, e);
+#endif
 }

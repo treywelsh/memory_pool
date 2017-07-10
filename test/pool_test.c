@@ -22,6 +22,12 @@ void test_alloc_all(struct test_suite *ts);
 void test_alloc_free_random(struct test_suite *ts);
 void test_check_alignement(struct test_suite *ts);
 
+/* Valgrind memory errors */
+void test_overflow_block(struct test_suite *ts);
+void test_leak_block(struct test_suite *ts);
+void test_write_freed_block(struct test_suite *ts);
+void test_double_free(struct test_suite *ts);
+
 void
 test_single_alloc_free(struct test_suite *ts) {
 	int ret;
@@ -210,6 +216,117 @@ test_check_alignement(struct test_suite *ts) {
 	pool_clean(&p);
 }
 
+void
+test_overflow_block(struct test_suite *ts) {
+	struct pool p;
+	void *block[2];
+	void *block_1_address;
+	void *block_1_realloc_address;
+
+	tests_header(ts, "Valgrind write outside of block\n");
+	pool_used = 0;
+
+	test_print(ts, "Init pool...\n");
+	pool_init(&p, POOL_SIZE, sizeof(struct test_elt), sizeof(int));
+
+	test_print(ts, "Alloc block 0...\n");
+	block[0] = pool_alloc(&p);
+
+	test_print(ts, "Alloc block 1...\n");
+	block[1] = pool_alloc(&p);
+	block_1_address = block[1];
+
+	test_print(ts, "Release block 1...\n");
+	pool_free(&p, block[1]);
+
+	test_print(ts, "Write %u bytes to the block 0 of size %zu...\n", 17,
+		 sizeof(struct
+		 test_elt));
+	memcpy(block[0], "aaaaaaaaaaaaaaaaaaaaaaaaaaa",  sizeof(struct test_elt) +
+		 1);
+
+	test_print(ts, "Re-alloc block 1...\n");
+	block_1_realloc_address = pool_alloc(&p);
+
+	test_ok_print(ts, "test if free list not corrupted\n", block_1_realloc_address == block_1_address);
+
+	pool_free(&p, block_1_realloc_address);
+	pool_free(&p, block[0]);
+
+	test_print(ts, "Clean pool...\n");
+	pool_clean(&p);
+}
+
+void
+test_leak_block(struct test_suite *ts) {
+	struct pool p;
+	void *block;
+
+	tests_header(ts, "Valgrind check leak\n");
+	pool_used = 0;
+
+	test_print(ts, "Init pool...\n");
+	pool_init(&p, POOL_SIZE, sizeof(struct test_elt), sizeof(int));
+
+	test_print(ts, "Alloc a block...\n");
+	block = pool_alloc(&p);
+
+	test_print(ts, "Write block...\n");
+	WRITE_TEST_ELT(block);
+
+	test_print(ts, "Enforce memory leak check...\n");
+	VALGRIND_DO_LEAK_CHECK;
+
+	test_print(ts, "Clean pool...\n");
+	pool_clean(&p);
+}
+
+void
+test_write_freed_block(struct test_suite *ts) {
+	struct pool p;
+	void *block;
+
+	tests_header(ts, "Valgrind write in freed block\n");
+	pool_used = 0;
+
+	test_print(ts, "Init pool...\n");
+	pool_init(&p, POOL_SIZE, sizeof(struct test_elt), sizeof(int));
+
+	test_print(ts, "Alloc a block...\n");
+	block = pool_alloc(&p);
+
+	test_print(ts, "Free block...\n");
+	pool_free(&p, block);
+
+	test_print(ts, "Write block...\n");
+	WRITE_TEST_ELT(block);
+
+	test_print(ts, "Clean pool...\n");
+	pool_clean(&p);
+}
+
+void
+test_double_free(struct test_suite *ts) {
+	struct pool p;
+	void *block;
+
+	tests_header(ts, "Valgrind double free\n");
+	pool_used = 0;
+
+	test_print(ts, "Init pool...\n");
+	pool_init(&p, POOL_SIZE, sizeof(struct test_elt), sizeof(int));
+
+	test_print(ts, "Alloc block...\n");
+	block = pool_alloc(&p);
+
+	test_print(ts, "Double free block...\n");
+	pool_free(&p, block);
+	pool_free(&p, block);
+
+	test_print(ts, "Clean pool...\n");
+	pool_clean(&p);
+}
+
 int
 main(void) {
 	struct test_suite ts;
@@ -228,6 +345,12 @@ main(void) {
 
 	test_check_alignement(&ts);
 	tests_display_results(&ts);
+
+	/* Valgrind tests */
+	test_overflow_block(&ts);
+	test_leak_block(&ts);
+	test_write_freed_block(&ts);
+	test_double_free(&ts);
 
 	return 0;
 }
