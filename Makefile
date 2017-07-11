@@ -26,10 +26,12 @@ all: $(TARGET_SO) $(TARGET_ST)
 
 #static
 $(TARGET_ST) : $(OBJ)
+	@mkdir -p $(LIBPATH)
 	$(AR) rcs $@ $^
 
 #shared
 $(TARGET_SO) : $(FPIC_OBJ)
+	@mkdir -p $(LIBPATH)
 	$(CC) -shared $(LDFLAGS) -o $@ $<
 
 %.fpic.o: %.c
@@ -41,4 +43,5 @@ test: $(TARGET_SO) $(TARGET_ST)
 .PHONY: all clean
 clean :
 	@rm -f $(OBJ) $(FPIC_OBJ) $(TARGET_SO) $(TARGET_ST)
+	@rm -df $(LIBPATH)
 	@make -C test clean
